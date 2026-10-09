@@ -1,0 +1,918 @@
+<section class="workspace" [class.compact-workspace]="compactView()" (click)="handleWorkspaceClick($event)" (contextmenu)="handleWorkspaceContextMenu($event)">
+  <div class="window-titlebar">
+    <div class="window-drag-region" data-tauri-drag-region (pointerdown)="startWindowDragging($event)">Flowday</div>
+    <div class="window-controls" aria-label="Controles de ventana">
+      @if (compactView()) {
+        <button type="button" [attr.aria-label]="compactAlwaysOnTop() ? 'Permitir que el widget quede detrás' : 'Mantener widget siempre visible'" [title]="compactAlwaysOnTop() ? 'Siempre visible' : 'Puede quedar detrás'" (click)="toggleCompactAlwaysOnTop()"><svg lucidePin size="14"></svg></button>
+        <button type="button" aria-label="Minimizar widget" title="Minimizar widget" (click)="minimizeWindow()"><svg lucideMinus size="15"></svg></button>
+      }
+      @if (!compactView()) {
+        <button type="button" aria-label="Mostrar widget" title="Mostrar widget (Ctrl+W)" (click)="minimizeToWidget()"><svg lucideMinus size="15"></svg></button>
+      }
+      <button type="button" aria-label="Maximizar o restaurar" title="Maximizar o restaurar" (click)="toggleMaximizeWindow()"><svg lucideSquare size="13"></svg></button>
+      <button class="window-close" type="button" aria-label="Cerrar Flowday" title="Cerrar" (click)="closeWindow()"><svg lucideX size="15"></svg></button>
+    </div>
+  </div>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Flowday, ir a Hoy">flowday<span>.</span></a>
+    <div class="header-date" aria-label="Fecha seleccionada">
+      <button class="icon-button quiet" type="button" aria-label="Día anterior" title="Día anterior" (click)="store.selectRelativeDay(-1)">
+        <svg lucideChevronLeft size="18"></svg>
+      </button>
+      <button class="header-date-label" type="button" (click)="store.selectToday()" [title]="store.isToday() ? 'Hoy' : 'Volver a hoy'">{{ dateLabel }}</button>
+      <button class="icon-button quiet" type="button" aria-label="Día siguiente" title="Día siguiente" (click)="store.selectRelativeDay(1)">
+        <svg lucideChevronRight size="18"></svg>
+      </button>
+    </div>
+    <div class="topbar-actions">
+      @if (compactView() && workspaceView() === 'ideas') {
+        <button class="icon-button compact-ideas-back" type="button" aria-label="Volver a tareas" title="Volver a tareas" (click)="selectProject(store.selectedProjectId())">
+          <svg lucideChevronLeft size="18"></svg>
+        </button>
+      }
+      <button class="icon-button" type="button" aria-label="Buscar tareas" title="Buscar tareas (Ctrl+K)" (click)="openGlobalSearch()">
+          <svg lucideSearch size="18"></svg>
+      </button>
+      <button class="icon-button" type="button" [attr.aria-label]="compactView() ? 'Ver más tareas' : 'Minimizar a vista de enfoque'" [title]="compactView() ? 'Ver más tareas (Ctrl+O)' : 'Vista de enfoque (Ctrl+W)'" (click)="toggleCompactView()">
+        @if (compactView()) {
+          <svg lucideMaximize2 size="18"></svg>
+        } @else {
+          <svg lucideMinimize2 size="18"></svg>
+        }
+      </button>
+      <button class="icon-button date-picker-button" type="button" aria-label="Elegir fecha" title="Elegir fecha (Ctrl+D)" (click)="openDatePicker()">
+        <svg lucideCalendarDays size="18"></svg>
+      </button>
+      <input #datePicker class="topbar-date-picker" type="date" [value]="store.selectedDate()" aria-label="Elegir fecha" (change)="selectDate($event)" />
+      <button class="icon-button" type="button" aria-label="Abrir configuraciones" title="Configuraciones" (click)="appearanceSettingsOpen.set(true)">
+        <svg lucideSettings size="18"></svg>
+      </button>
+    </div>
+  </header>
+
+  @if (appearanceSettingsOpen()) {
+    <div class="modal-backdrop" (click)="appearanceSettingsOpen.set(false)">
+      <section class="task-editor appearance-settings" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="appearance-settings-title">
+        <div class="editor-heading">
+          <div><p class="eyebrow">Configuraciones</p><h3 id="appearance-settings-title">{{ settingsSection() === 'appearance' ? 'Apariencia' : 'Notificaciones' }}</h3></div>
+          <button class="editor-cancel" type="button" (click)="appearanceSettingsOpen.set(false)">Cerrar</button>
+        </div>
+        <div class="settings-layout">
+          <nav class="settings-nav" aria-label="Secciones de configuración">
+            <button type="button" [class.selected]="settingsSection() === 'appearance'" [attr.aria-current]="settingsSection() === 'appearance' ? 'page' : null" (click)="settingsSection.set('appearance')">Apariencia</button>
+            <button type="button" [class.selected]="settingsSection() === 'notifications'" [attr.aria-current]="settingsSection() === 'notifications' ? 'page' : null" (click)="settingsSection.set('notifications')">Notificaciones</button>
+          </nav>
+          <div class="settings-content">
+            @if (settingsSection() === 'appearance') {
+              <div class="appearance-mode" role="group" aria-label="Modo de color">
+                <button type="button" [class.selected]="appearanceSettings().mode === 'system'" [attr.aria-pressed]="appearanceSettings().mode === 'system'" (click)="updateAppearanceMode('system')">Sistema</button>
+                <button type="button" [class.selected]="appearanceSettings().mode === 'light'" [attr.aria-pressed]="appearanceSettings().mode === 'light'" (click)="updateAppearanceMode('light')">Claro</button>
+                <button type="button" [class.selected]="appearanceSettings().mode === 'dark'" [attr.aria-pressed]="appearanceSettings().mode === 'dark'" (click)="updateAppearanceMode('dark')">Oscuro</button>
+              </div>
+              <p class="appearance-note">Los cambios se aplican y guardan de inmediato.</p>
+              <div class="appearance-palette-grid">
+                @for (mode of appearancePaletteModes; track mode) {
+                  <section class="appearance-palette" [attr.aria-label]="mode === 'light' ? 'Paleta clara' : 'Paleta oscura'">
+                    <h4>{{ mode === 'light' ? 'Modo claro' : 'Modo oscuro' }}</h4>
+                    @for (field of appearanceColorFields; track field.key) {
+                      <label class="appearance-color-field">
+                        <span>{{ field.label }}</span>
+                        <input type="color" [value]="appearanceSettings()[mode][field.key]" [attr.aria-label]="field.label + ' para modo ' + (mode === 'light' ? 'claro' : 'oscuro')" (input)="updateAppearanceColor(mode, field.key, $any($event.target).value)" />
+                        <code>{{ appearanceSettings()[mode][field.key] }}</code>
+                      </label>
+                    }
+                  </section>
+                }
+              </div>
+              <div class="editor-footer appearance-footer">
+                <span>La paleta no depende del tema del sistema cuando eliges Claro u Oscuro.</span>
+                <button class="editor-cancel" type="button" (click)="resetAppearance()">Restablecer</button>
+              </div>
+            } @else {
+              <section class="notification-settings" aria-label="Notificaciones diarias">
+                <p>Programa avisos locales para revisar las tareas pendientes mientras Flowday está abierto.</p>
+                <div class="notification-schedule">
+                  <div><strong>Inicio del día</strong><span>Resumen de pendientes para hoy.</span></div>
+                  <label class="notification-toggle"><input type="checkbox" [checked]="notificationSettings().morningEnabled" (change)="updateNotificationEnabled('morning', $any($event.target).checked)" /><span>Activar</span></label>
+                  <label class="notification-time"><span>Hora</span><input type="time" [value]="notificationSettings().morningTime" [disabled]="!notificationSettings().morningEnabled" (change)="updateNotificationTime('morning', $event)" /></label>
+                </div>
+                <div class="notification-schedule">
+                  <div><strong>Cierre del día</strong><span>Aviso si quedan tareas pendientes.</span></div>
+                  <label class="notification-toggle"><input type="checkbox" [checked]="notificationSettings().eveningEnabled" (change)="updateNotificationEnabled('evening', $any($event.target).checked)" /><span>Activar</span></label>
+                  <label class="notification-time"><span>Hora</span><input type="time" [value]="notificationSettings().eveningTime" [disabled]="!notificationSettings().eveningEnabled" (change)="updateNotificationTime('evening', $event)" /></label>
+                </div>
+              </section>
+            }
+          </div>
+        </div>
+      </section>
+    </div>
+  }
+
+  @if (noteEditorOpen(); as isNoteEditorOpen) {
+    <div class="modal-backdrop note-editor-backdrop" (click)="closeNoteEditor()">
+      <section class="note-editor-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="note-editor-title">
+        <div class="note-editor-heading">
+          <input id="note-editor-title" class="note-title-input" [value]="noteTitle()" placeholder="Título de la nota" aria-label="Título de la nota" (input)="onNoteTitleInput($event)" />
+          <div class="note-editor-status"><span [class.saving]="noteSaving()">{{ noteSaving() ? "Guardando" : noteIsDraft() ? "Se guardará al escribir" : "Guardado" }}</span><button type="button" aria-label="Cerrar nota" title="Cerrar" (click)="closeNoteEditor()"><svg lucideX size="18"></svg></button></div>
+        </div>
+        <div class="note-toolbar" aria-label="Formato de nota">
+          <button type="button" aria-label="Negrilla (Ctrl+B)" title="Negrilla (Ctrl+B)" (mousedown)="$event.preventDefault()" (click)="executeNoteCommand('bold')"><strong>B</strong></button>
+          <button type="button" aria-label="Cursiva (Ctrl+I)" title="Cursiva (Ctrl+I)" (mousedown)="$event.preventDefault()" (click)="executeNoteCommand('italic')"><em>I</em></button>
+          <button type="button" aria-label="Subrayado (Ctrl+U)" title="Subrayado (Ctrl+U)" (mousedown)="$event.preventDefault()" (click)="executeNoteCommand('underline')"><u>U</u></button>
+          <button type="button" aria-label="Lista con viñetas" title="Lista con viñetas" (mousedown)="$event.preventDefault()" (click)="executeNoteCommand('insertUnorderedList')">•☷</button>
+          <button type="button" aria-label="Lista numerada" title="Lista numerada" (mousedown)="$event.preventDefault()" (click)="executeNoteCommand('insertOrderedList')">1☷</button>
+          <button type="button" aria-label="Insertar imagen" title="Insertar imagen" (mousedown)="$event.preventDefault()" (click)="openNoteImagePicker()">▧</button>
+          @if (selectedNoteImage()) {
+            <span class="note-image-size-label">Tamaño</span>
+            @for (width of noteImageWidths; track width) {
+              <button class="note-image-size" type="button" [class.active]="selectedNoteImageWidth() === width + '%'" (mousedown)="$event.preventDefault()" (click)="resizeSelectedNoteImage(width)">{{ width }}%</button>
+            }
+          }
+        </div>
+        <div #noteEditor class="note-content-editor" contenteditable="true" role="textbox" aria-label="Contenido de la nota" data-placeholder="Escribe, pega o arrastra una imagen aquí..." (input)="onNoteEditorInput()" (paste)="handleNotePaste($event)" (drop)="handleNoteDrop($event)" (dragover)="$event.preventDefault()" (click)="selectNoteImage($event)"></div>
+        <input #noteImageInput type="file" accept="image/*" hidden (change)="handleNoteImageInput($event)" />
+      </section>
+    </div>
+  }
+
+  @if (notice(); as notice) {
+    <div class="toast" [class.toast-success]="notice.tone === 'success'" [class.toast-error]="notice.tone === 'error'" [class.toast-warning]="notice.tone === 'warning'" role="status" aria-live="polite">
+      <span class="toast-status" aria-hidden="true"></span>
+      <span class="toast-message">{{ notice.message }}</span>
+      @if (notice.undo) {
+        <button class="toast-undo" type="button" (click)="undoNotice()">Deshacer</button>
+      }
+      <button type="button" (click)="dismissNotice()" aria-label="Cerrar notificación" title="Cerrar">
+        <svg lucideX size="14" aria-hidden="true"></svg>
+      </button>
+    </div>
+  }
+
+  @if (globalSearchOpen()) {
+    <div class="modal-backdrop global-search-backdrop" (click)="closeGlobalSearch()">
+      <section class="task-editor global-search-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="global-search-title">
+        <div class="global-search-heading">
+          <h2 id="global-search-title">Buscar en Flowday</h2>
+          <button class="global-search-close" type="button" aria-label="Cerrar búsqueda" title="Cerrar" (click)="closeGlobalSearch()"><svg lucideX size="16"></svg></button>
+        </div>
+        <div class="global-search-field">
+          <svg lucideSearch size="16" aria-hidden="true"></svg>
+          <input class="global-search-input" [formControl]="globalSearch.controls.query" autofocus placeholder="Tareas, notas o descripción" aria-label="Buscar tareas, notas, título, descripción o expresión regular" (input)="refreshGlobalSearch()" />
+        </div>
+        <div class="global-search-filters">
+          <label>Estado<select [formControl]="globalSearch.controls.status" (change)="refreshGlobalSearch()"><option value="all">Todos</option><option value="pending">Pendientes</option><option value="completed">Completadas</option></select></label>
+          <label>Prioridad<select [formControl]="globalSearch.controls.priority" (change)="refreshGlobalSearch()"><option value="all">Todas</option><option value="high">Alta</option><option value="medium">Media</option><option value="low">Baja</option></select></label>
+          <label>Proyecto<select [formControl]="globalSearch.controls.projectId" (change)="refreshGlobalSearch()"><option value="">Todos</option>@for (project of projects(); track project.id) {<option [value]="project.id">{{ project.name }}</option>}</select></label>
+        </div>
+        @if (globalSearchError(); as error) {
+          <p>{{ error }}</p>
+        } @else if (globalSearchLoading()) {
+          <p class="global-search-message">Buscando tareas...</p>
+        } @else if (globalSearchResults().length === 0 && globalSearchNoteResults().length === 0) {
+          <p class="global-search-message">No encontramos tareas ni notas con esos filtros.</p>
+        } @else {
+          <div class="global-search-results" aria-live="polite">
+            @if (globalSearchResults().length > 0) {
+              <p class="global-search-section-label">Tareas</p>
+              @for (task of globalSearchResults(); track task.id) {
+                <div class="global-search-result-row">
+                  <button class="global-search-result" type="button" (click)="openGlobalSearchResult(task)">
+                    <span class="global-search-result-main"><strong>{{ task.title }}</strong>@if (task.description) {<small>{{ task.description }}</small>}</span>
+                    <span class="global-search-result-meta"><i class="search-priority" [class.high]="task.priority === 'high'" [class.medium]="task.priority === 'medium'" [class.low]="task.priority === 'low'"></i><span>{{ priorityLabel(task.priority) }}</span><span>{{ statusLabel(task.status) }}</span><span>{{ task.projectName ?? 'Sin proyecto' }}</span><span>{{ task.plannedDate }}</span></span>
+                  </button>
+                  <div class="global-search-actions">
+                    <button type="button" aria-label="Editar tarea" title="Editar" (click)="editSearchTask(task)"><svg lucidePencil size="15"></svg></button>
+                    <button class="danger" type="button" aria-label="Eliminar tarea" title="Eliminar" (click)="deleteSearchTask(task)"><svg lucideTrash2 size="15"></svg></button>
+                  </div>
+                </div>
+              }
+            }
+            @if (globalSearchNoteResults().length > 0) {
+              <p class="global-search-section-label">Notas</p>
+              @for (note of globalSearchNoteResults(); track note.id) {
+                <div class="global-search-result-row">
+                  <button class="global-search-result" type="button" (click)="openGlobalSearchNote(note)">
+                    <span class="global-search-result-main"><strong>{{ note.title }}</strong><small>{{ notePreview(note) }}</small></span>
+                    <span class="global-search-result-meta"><span>Nota rápida</span><span>{{ noteDateLabel(note) }}</span></span>
+                  </button>
+                  <div class="global-search-actions">
+                    <button type="button" aria-label="Abrir nota" title="Abrir nota" (click)="openGlobalSearchNote(note)"><svg lucidePencil size="15"></svg></button>
+                  </div>
+                </div>
+              }
+            }
+          </div>
+        }
+      </section>
+    </div>
+  }
+
+  @if (viewingSearchTask(); as task) {
+    <div class="modal-backdrop" (click)="closeSearchTaskDetail()">
+      <section class="confirm-modal task-detail-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="task-detail-title">
+        <div class="editor-heading">
+          <div><p class="eyebrow">Detalle de tarea</p><h2 id="task-detail-title">{{ task.title }}</h2></div>
+          <button class="editor-cancel" type="button" (click)="closeSearchTaskDetail()">Volver</button>
+        </div>
+        @if (task.description) { <p class="task-detail-description">{{ task.description }}</p> }
+        <div class="task-detail-facts">
+          <span>Prioridad <strong>{{ priorityLabel(task.priority) }}</strong></span>
+          <span>Estado <strong>{{ statusLabel(task.status) }}</strong></span>
+          <span>Proyecto <strong>{{ task.projectName ?? 'Sin proyecto' }}</strong></span>
+          <span>Fecha <strong>{{ task.plannedDate }}</strong></span>
+          @if (task.estimatedMinutes !== null) { <span>Estimación <strong>{{ task.estimatedMinutes }} min</strong></span> }
+          @if (task.actualMinutes !== null) { <span>Tiempo real <strong>{{ task.actualMinutes }} min</strong></span> }
+        </div>
+        <div class="confirm-actions">
+          <button class="editor-cancel" type="button" (click)="closeSearchTaskDetail()">Cerrar</button>
+          <button class="danger-submit" type="button" (click)="deleteSearchTask(task)">Eliminar</button>
+          <button class="creator-submit" type="button" (click)="editSearchTask(task)">Editar</button>
+        </div>
+      </section>
+    </div>
+  }
+
+  <main class="workspace-body" [class.rail-collapsed]="projectRailCollapsed()" [class.compact-body]="compactView()" [class.ideas-body]="workspaceView() === 'ideas'">
+    <aside class="project-rail" [class.collapsed]="projectRailCollapsed()" aria-label="Proyectos" (contextmenu)="openRailContextMenu($event)">
+      @if (compactView()) {
+        <label class="compact-project-picker">
+          <span>Proyecto</span>
+          <select [value]="store.selectedProjectId() ?? ''" aria-label="Cambiar proyecto" (change)="selectCompactProject($event)">
+            <option value="">Todas las tareas</option>
+            @for (project of projects(); track project.id) {
+              <option [value]="project.id">{{ project.name }}</option>
+            }
+          </select>
+        </label>
+      } @else {
+      <div class="rail-heading">
+        <p class="rail-label">Espacios</p>
+        <button class="rail-toggle" type="button" [attr.aria-label]="projectRailCollapsed() ? 'Expandir proyectos' : 'Colapsar proyectos'" [title]="projectRailCollapsed() ? 'Expandir proyectos' : 'Colapsar proyectos'" (click)="projectRailCollapsed.set(!projectRailCollapsed())">
+          <svg lucideChevronLeft size="16"></svg>
+        </button>
+      </div>
+      <button class="folder all-folder" type="button" [class.active]="workspaceView() === 'tasks' && store.selectedProjectId() === null" aria-label="Todas" title="Todas" (click)="selectProject(null)">
+        <span class="rail-icon"><svg lucideFolderKanban size="16"></svg></span>
+        <span class="rail-text">Todas</span>
+      </button>
+      <div class="folder-list">
+        @for (project of projects(); track project.id) {
+          <div class="folder-row" [attr.data-project-id]="project.id" [class.active]="workspaceView() === 'tasks' && store.selectedProjectId() === project.id" [style.background]="projectBackground(project.color)" (contextmenu)="openProjectContextMenu(project, $event)">
+            <button class="folder" type="button" [attr.aria-label]="project.name" [title]="project.name" (click)="selectProject(project.id)">
+              @if (projectLogoUrl(project); as logoUrl) {
+                <img class="project-avatar" [src]="logoUrl" [alt]="" />
+              } @else {
+                <span class="project-avatar icon-avatar" [style.background]="project.color">
+                  @switch (project.iconName) {
+                    @case ("briefcase-business") { <svg lucideBriefcaseBusiness size="15"></svg> }
+                    @case ("code-2") { <svg lucideCode2 size="15"></svg> }
+                    @case ("palette") { <svg lucidePalette size="15"></svg> }
+                    @case ("rocket") { <svg lucideRocket size="15"></svg> }
+                    @default { <svg lucideFolderKanban size="15"></svg> }
+                  }
+                </span>
+              }
+              <span class="rail-text">{{ project.name }}</span>
+            </button>
+            <button class="folder-settings" type="button" [attr.aria-label]="'Opciones de ' + project.name" [attr.aria-expanded]="projectActionsOpenFor() === project.id" title="Opciones" (click)="toggleProjectActions(project, $event)">
+              <svg lucideEllipsisVertical size="16"></svg>
+            </button>
+          </div>
+        }
+      </div>
+      <button class="new-folder" type="button" aria-label="Crear proyecto" title="Crear proyecto" (click)="openProjectCreator()">
+        <span class="rail-icon"><svg lucidePlus size="17"></svg></span><span class="rail-text">Nuevo proyecto</span>
+      </button>
+      <button class="archived-folder" type="button" aria-label="Ver proyectos archivados" title="Ver proyectos archivados" (click)="toggleArchivedProjects()">
+        <span class="rail-icon"><svg lucideArchive size="16"></svg></span><span class="rail-text">Proyectos archivados</span>
+      </button>
+      <button class="archived-folder ideas-folder" type="button" [class.active]="workspaceView() === 'ideas'" aria-label="Espacio de ideas" title="Espacio de ideas" (click)="openIdeasWorkspace()">
+        <span class="rail-icon"><svg lucidePencil size="16"></svg></span><span class="rail-text">Espacio de ideas</span>
+      </button>
+      @if (projects().length === 0) {
+        <p class="rail-empty">Crea tu primer proyecto aquí.</p>
+      }
+      }
+    </aside>
+
+    <section class="day-content" [class.showing-completed]="completedOpen()" [class.ideas-workspace]="workspaceView() === 'ideas'">
+    @if (workspaceView() === 'ideas') {
+      <section class="notes-library ideas-panel" aria-labelledby="ideas-workspace-title">
+        <div class="notes-library-heading">
+          <div><p class="eyebrow">Espacio de ideas</p><h2 id="ideas-workspace-title">Notas rápidas</h2></div>
+          <div class="notes-library-actions">
+            <div class="notes-view-toggle" role="group" aria-label="Vista de notas">
+              <button type="button" [class.active]="notesViewMode() === 'grid'" [attr.aria-pressed]="notesViewMode() === 'grid'" (click)="notesViewMode.set('grid')">Grilla</button>
+              <button type="button" [class.active]="notesViewMode() === 'list'" [attr.aria-pressed]="notesViewMode() === 'list'" (click)="notesViewMode.set('list')">Lista</button>
+            </div>
+          </div>
+        </div>
+        <div class="notes-library-toolbar">
+          <span>{{ notes().length }} nota{{ notes().length === 1 ? '' : 's' }}</span>
+          <button class="creator-submit" type="button" (click)="createNote()"><svg lucidePlus size="15"></svg> Nueva nota</button>
+        </div>
+        @if (notes().length === 0) {
+          <div class="notes-empty"><svg lucidePencil size="24"></svg><strong>Tu espacio para pensar</strong><span>Crea una nota rápida con Ctrl+N.</span></div>
+        } @else {
+          <div class="notes-collection" [class.notes-list-view]="notesViewMode() === 'list'">
+            @for (note of notes(); track note.id) {
+              <article class="note-card" tabindex="0" (click)="openNoteEditor(note)" (keydown.enter)="openNoteEditor(note)" [attr.aria-label]="'Abrir nota ' + note.title">
+                <div class="note-card-heading"><h3>{{ note.title }}</h3><button type="button" aria-label="Eliminar nota" title="Eliminar nota" (click)="deleteNote(note, $event)"><svg lucideTrash2 size="14"></svg></button></div>
+                <p>{{ notePreview(note) }}</p>
+                <time>{{ noteDateLabel(note) }}</time>
+              </article>
+            }
+          </div>
+        }
+      </section>
+    }
+    <div [hidden]="workspaceView() !== 'tasks'">
+    <div class="day-heading">
+      <div class="day-heading-line">
+        <p class="eyebrow">{{ selectedProject() ? "Proyecto" : store.isToday() ? "Hoy" : "Día seleccionado" }}</p>
+        @if (!compactView() && store.completedTasks().length > 0) {
+          <button class="completed-toggle" type="button" [class.active]="completedOpen()" [attr.aria-expanded]="completedOpen()" (click)="completedOpen.set(!completedOpen())">
+            {{ completedOpen() ? "Ocultar completadas" : "Ver completadas" }}
+          </button>
+        }
+      </div>
+      @if (selectedProject(); as project) {
+        <div class="project-banner" [style.background]="projectBackground(project.color)">
+          @if (projectLogoUrl(project); as logoUrl) {
+            <img class="project-avatar" [src]="logoUrl" [alt]="" />
+          } @else {
+            <span class="project-avatar icon-avatar" [style.background]="project.color">
+              @switch (project.iconName) {
+                @case ("briefcase-business") { <svg lucideBriefcaseBusiness size="17"></svg> }
+                @case ("code-2") { <svg lucideCode2 size="17"></svg> }
+                @case ("palette") { <svg lucidePalette size="17"></svg> }
+                @case ("rocket") { <svg lucideRocket size="17"></svg> }
+                @default { <svg lucideFolderKanban size="17"></svg> }
+              }
+            </span>
+          }
+          @if (inlineProjectTitleId() === project.id) {
+            <input class="inline-title-input project-title-input" [formControl]="inlineProjectTitle" autofocus (click)="$event.stopPropagation()" (keydown.enter)="saveInlineProjectTitle(project)" (keydown.escape)="cancelInlineProjectTitle()" (blur)="saveInlineProjectTitle(project)" aria-label="Nombre del proyecto" />
+          } @else {
+            <h1 (dblclick)="beginInlineProjectTitle(project)" title="Doble clic para renombrar">{{ project.name }}</h1>
+          }
+          <button class="project-settings" type="button" [attr.aria-label]="'Opciones de ' + project.name" [attr.aria-expanded]="projectActionsOpenFor() === project.id" title="Opciones del proyecto" (click)="toggleProjectActions(project, $event)">
+            <svg lucideEllipsisVertical size="18"></svg>
+          </button>
+        </div>
+      }
+    </div>
+
+    @if (!compactView()) {
+      @if (store.statistics(); as statistics) {
+        <section class="day-statistics" [class.expanded]="statisticsExpanded()" aria-label="Hechos del día">
+          <div class="statistics-summary">
+            <div class="statistics-summary-copy">
+              <span>Registro</span>
+              <strong>{{ statistics.completedTaskCount }} completadas</strong>
+              <span aria-hidden="true">·</span>
+              <strong>{{ statisticsTimeLabel(statistics.actualMinutes) }}</strong>
+            </div>
+            <button class="statistics-toggle" type="button" [attr.aria-expanded]="statisticsExpanded()" (click)="statisticsExpanded.set(!statisticsExpanded())">
+              {{ statisticsExpanded() ? "Ocultar indicadores" : "Ver indicadores" }}
+            </button>
+          </div>
+          @if (statisticsExpanded()) {
+            <div class="statistics-details">
+              <div class="statistics-grid">
+                <div class="statistics-fact"><span>Completadas</span><strong>{{ statistics.completedTaskCount }}</strong></div>
+                <div class="statistics-fact"><span>Tiempo real</span><strong>{{ statisticsTimeLabel(statistics.actualMinutes) }}</strong></div>
+                <div class="statistics-fact"><span>Estimado / real</span><strong>{{ statisticsComparisonLabel(statistics) }}</strong></div>
+                <div class="statistics-fact"><span>Heredadas</span><strong>{{ statistics.inheritedTaskCount }}</strong></div>
+              </div>
+              <div class="statistics-trends" aria-label="Tendencias de trabajo completado">
+                <span>7 días <strong>{{ statisticsTrendLabel(statistics.trend7Days) }}</strong></span>
+                <span>30 días <strong>{{ statisticsTrendLabel(statistics.trend30Days) }}</strong></span>
+              </div>
+              <section class="statistics-chart" aria-labelledby="progress-chart-title">
+                <div class="statistics-chart-heading">
+                  <div><p class="eyebrow">Ritmo</p><h3 id="progress-chart-title">Avance por día</h3></div>
+                  <div class="chart-range" role="group" aria-label="Rango del gráfico">
+                    @for (range of chartRanges; track range) {
+                      <button type="button" [class.active]="chartRange() === range" [attr.aria-pressed]="chartRange() === range" (click)="chartRange.set(range)">{{ range }} días</button>
+                    }
+                  </div>
+                </div>
+                @if (chartData().length > 0) {
+                  <div class="chart-frame">
+                    <svg class="progress-chart" viewBox="0 0 720 132" role="img" aria-labelledby="progress-chart-title progress-chart-description">
+                      <desc id="progress-chart-description">Tareas planificadas, completadas y aplazadas por día.</desc>
+                      <line class="chart-grid-line" x1="28" y1="24" x2="692" y2="24"></line>
+                      <line class="chart-grid-line" x1="28" y1="60" x2="692" y2="60"></line>
+                      <line class="chart-grid-line" x1="28" y1="96" x2="692" y2="96"></line>
+                      <text class="chart-y-label" x="4" y="28">{{ chartMaxValue() }}</text>
+                      <text class="chart-y-label" x="12" y="100">0</text>
+                      <polyline class="chart-line planned" [attr.points]="chartPoints('plannedTaskCount')"></polyline>
+                      <polyline class="chart-line completed" [attr.points]="chartPoints('completedTaskCount')"></polyline>
+                      <polyline class="chart-line postponed" [attr.points]="chartPoints('postponedTaskCount')"></polyline>
+                      @for (point of chartData(); track point.date; let index = $index) {
+                        <circle class="chart-point planned" [attr.cx]="chartPointX(index)" [attr.cy]="chartPointY(point.plannedTaskCount)" r="2.8"><title>{{ chartDateLabel(point.date) }}: {{ point.plannedTaskCount }} tareas</title></circle>
+                        <circle class="chart-point completed" [attr.cx]="chartPointX(index)" [attr.cy]="chartPointY(point.completedTaskCount)" r="2.8"><title>{{ chartDateLabel(point.date) }}: {{ point.completedTaskCount }} completadas</title></circle>
+                        <circle class="chart-point postponed" [attr.cx]="chartPointX(index)" [attr.cy]="chartPointY(point.postponedTaskCount)" r="2.8"><title>{{ chartDateLabel(point.date) }}: {{ point.postponedTaskCount }} aplazadas</title></circle>
+                      }
+                      @for (point of chartLabelPoints(); track point.date) {
+                        <text class="chart-x-label" [attr.x]="chartPointX(chartData().indexOf(point))" y="122" text-anchor="middle">{{ chartDateLabel(point.date) }}</text>
+                      }
+                    </svg>
+                  </div>
+                  <div class="chart-legend" aria-label="Leyenda del gráfico">
+                    <span><i class="planned-dot"></i>Tareas del día</span>
+                    <span><i class="completed-dot"></i>Completadas</span>
+                    <span><i class="postponed-dot"></i>Aplazadas</span>
+                  </div>
+                }
+              </section>
+              @if (statistics.completedWithoutActualMinutes > 0) {
+                <p class="statistics-note">{{ statistics.completedWithoutActualMinutes }} completada{{ statistics.completedWithoutActualMinutes === 1 ? '' : 's' }} sin tiempo real registrado.</p>
+              }
+            </div>
+          }
+        </section>
+      }
+    }
+
+    @if (projectActionsOpenFor(); as projectId) {
+      @if (projectForId(projectId); as project) {
+        <div class="project-action-menu global-project-menu" [style.top.px]="projectActionsPosition()?.top" [style.left.px]="projectActionsPosition()?.left" role="menu" [attr.aria-label]="'Opciones de ' + project.name">
+          <button type="button" role="menuitem" (click)="editProjectFromMenu(project)"><svg lucidePencil size="14"></svg>Editar</button>
+          <button type="button" role="menuitem" (click)="openArchiveConfirmation(project)"><svg lucideArchive size="14"></svg>Archivar</button>
+          <button class="danger" type="button" role="menuitem" (click)="openDeleteConfirmation(project)"><svg lucideTrash2 size="14"></svg>Eliminar</button>
+        </div>
+      }
+    }
+
+    @if (archivedProjectsOpen()) {
+      <div class="modal-backdrop" (click)="toggleArchivedProjects()">
+        <section class="project-archive-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="archived-projects-title">
+          <div class="editor-heading">
+            <div><p class="eyebrow">Espacios</p><h2 id="archived-projects-title">Proyectos archivados</h2></div>
+            <button class="editor-cancel" type="button" (click)="toggleArchivedProjects()">Cerrar</button>
+          </div>
+          @if (archivedProjects().length === 0) {
+            <p class="archive-empty">No hay proyectos archivados.</p>
+          } @else {
+            <div class="archived-project-list">
+              @for (project of archivedProjects(); track project.id) {
+                <div class="archived-project-row">
+                  <span class="project-avatar icon-avatar" [style.background]="project.color"><svg lucideArchiveRestore size="15"></svg></span>
+                  <strong>{{ project.name }}</strong>
+                  <button type="button" (click)="unarchiveProject(project)"><svg lucideArchiveRestore size="14"></svg>Desarchivar</button>
+                </div>
+              }
+            </div>
+          }
+        </section>
+      </div>
+    }
+
+    @if (archiveConfirmationProject(); as project) {
+      <div class="modal-backdrop" (click)="cancelArchiveConfirmation()">
+        <section class="confirm-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="archive-confirm-title">
+          <p class="eyebrow">Archivar proyecto</p><h2 id="archive-confirm-title">¿Archivar {{ project.name }}?</h2>
+          <p>Sus tareas se conservarán y podrás desarchivarlo después.</p>
+          <div class="confirm-actions"><button type="button" class="editor-cancel" (click)="cancelArchiveConfirmation()">Cancelar</button><button type="button" class="creator-submit" (click)="confirmArchiveProject()">Sí, archivar</button></div>
+        </section>
+      </div>
+    }
+
+    @if (deleteConfirmationProject(); as project) {
+      <div class="modal-backdrop" (click)="cancelDeleteConfirmation()">
+        <section class="confirm-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title">
+          <p class="eyebrow">Eliminar proyecto</p><h2 id="delete-confirm-title">Escribe {{ project.name }} para confirmar</h2>
+          <p>El proyecto se ocultará y podrás deshacerlo desde el toast.</p>
+          <input [formControl]="deleteConfirmation" [placeholder]="project.name" aria-label="Nombre del proyecto" autocomplete="off" />
+          <div class="confirm-actions"><button type="button" class="editor-cancel" (click)="cancelDeleteConfirmation()">Cancelar</button><button type="button" class="danger-submit" [disabled]="deleteConfirmation.value.trim() !== project.name" (click)="confirmDeleteProject()">Eliminar</button></div>
+        </section>
+      </div>
+    }
+
+    @if (deleteConfirmationTask(); as task) {
+      <div class="modal-backdrop" (click)="cancelTaskDeleteConfirmation()">
+        <section class="confirm-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="task-delete-confirm-title">
+          <p class="eyebrow">Eliminar tarea</p><h2 id="task-delete-confirm-title">¿Eliminar {{ task.title }}?</h2>
+          <p>Podrás recuperarla desde el aviso que aparecerá a continuación.</p>
+          <div class="confirm-actions"><button type="button" class="editor-cancel" (click)="cancelTaskDeleteConfirmation()">Cancelar</button><button type="button" class="danger-submit" (click)="confirmTaskDelete()">Eliminar</button></div>
+        </section>
+      </div>
+    }
+
+    @if (pendingTimedCompletion(); as completion) {
+      <div class="modal-backdrop" (click)="cancelTimedCompletion()">
+        <section class="confirm-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="time-completion-title">
+          <p class="eyebrow">Temporizador en curso</p><h2 id="time-completion-title">¿Registrar {{ completion.elapsedMinutes }} min?</h2>
+          <p>Se sumarán al tiempo real de {{ completion.task.title }} antes de completarla.</p>
+          <div class="confirm-actions"><button type="button" class="editor-cancel" (click)="cancelTimedCompletion()">Cancelar</button><button type="button" class="editor-cancel" (click)="resolveTimedCompletion(false)">Completar sin registrar</button><button type="button" class="creator-submit" (click)="resolveTimedCompletion(true)">Registrar y completar</button></div>
+        </section>
+      </div>
+    }
+
+    @if (priorityDropConfirmation(); as pendingDrop) {
+      <div class="modal-backdrop" (click)="resolvePriorityDrop(false)">
+        <section class="confirm-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="priority-drop-confirm-title">
+          <p class="eyebrow">Primera posición</p><h2 id="priority-drop-confirm-title">¿Marcar {{ pendingDrop.task.title }} como prioridad alta?</h2>
+          <p>La tarea se moverá al inicio en cualquiera de los dos casos.</p>
+          <div class="confirm-actions"><button type="button" class="editor-cancel" (click)="resolvePriorityDrop(false)">Solo mover</button><button type="button" class="creator-submit" (click)="resolvePriorityDrop(true)">Marcar alta</button></div>
+        </section>
+      </div>
+    }
+
+    <section class="task-panel" aria-labelledby="today-title" [class.pending-panel]="true">
+      <div class="panel-header">
+        <div>
+          <h2 id="today-title">En foco</h2>
+          <p>{{ visibleActiveTasks().length }} pendientes {{ compactView() ? (selectedProject() ? "del proyecto" : "hoy") : (selectedProject() ? "en este proyecto" : "para este día") }}</p>
+        </div>
+        <div class="panel-actions">
+          <div class="priority-filters">
+            <button class="priority-filter high" type="button" [class.active]="activePriorityFilter() === 'high'" [attr.aria-pressed]="activePriorityFilter() === 'high'" (click)="toggleActivePriorityFilter('high')"><span></span>Alta</button>
+            <button class="priority-filter medium" type="button" [class.active]="activePriorityFilter() === 'medium'" [attr.aria-pressed]="activePriorityFilter() === 'medium'" (click)="toggleActivePriorityFilter('medium')"><span></span>Media</button>
+            <button class="priority-filter low" type="button" [class.active]="activePriorityFilter() === 'low'" [attr.aria-pressed]="activePriorityFilter() === 'low'" (click)="toggleActivePriorityFilter('low')"><span></span>Baja</button>
+          </div>
+          @if (store.loading()) { <span class="loading">Actualizando</span> }
+        </div>
+      </div>
+
+      @if (store.error(); as error) {
+        <div class="error" role="alert">
+          <span>{{ error }}</span>
+          <button type="button" (click)="store.clearError()" aria-label="Cerrar mensaje">Cerrar</button>
+        </div>
+      }
+
+      <form class="quick-add" [class.compact-quick-add]="compactView()" (submit)="$event.preventDefault(); addQuickTask()">
+        @if (!compactView()) {
+        <svg lucidePlus size="20" aria-hidden="true"></svg>
+        }
+        <input [formControl]="quickTask" aria-label="Nueva tarea" [placeholder]="selectedProject() ? 'Agregar a ' + selectedProject()!.name : 'Agregar una tarea'" [disabled]="store.saving()" />
+        <button type="submit" [disabled]="store.saving() || !quickTask.value.trim()" [attr.aria-label]="compactView() ? 'Agregar tarea' : null" [title]="compactView() ? 'Agregar tarea' : null">
+          @if (compactView()) {
+            <svg lucidePlus size="16"></svg>
+          } @else {
+            Agregar
+          }
+        </button>
+      </form>
+
+      @if (visibleActiveTasks().length === 0 && !store.loading()) {
+        <div class="empty-state">
+          <svg lucideCircle size="26" aria-hidden="true"></svg>
+          <p>Tu lista está despejada.</p>
+          <span>{{ selectedProject() ? "Agrega el siguiente paso para este proyecto." : "Escribe lo siguiente que necesitas resolver." }}</span>
+        </div>
+      } @else {
+        <div class="task-list" cdkDropList [cdkDropListDisabled]="compactView() || activePriorityFilter() !== 'all'" (cdkDropListDropped)="drop($event)" aria-label="Tareas pendientes">
+          @for (task of (compactView() ? compactTasks() : visibleActiveTasks()); track task.id) {
+            <article class="task-row" cdkDrag>
+              <button class="complete-button" type="button" aria-label="Completar {{ task.title }}" (click)="completeTask(task.id)">
+                <svg lucideCircle size="21"></svg>
+              </button>
+              <button class="drag-handle" type="button" cdkDragHandle aria-label="Reordenar {{ task.title }}" title="Arrastrar para reordenar">
+                <svg lucideGripVertical size="17"></svg>
+              </button>
+              <div class="task-main">
+                @if (inlineTaskTitleId() === task.id) {
+                  <input class="inline-title-input task-title-input" [formControl]="inlineTaskTitle" autofocus (keydown.enter)="saveInlineTaskTitle(task)" (keydown.escape)="cancelInlineTaskTitle()" (blur)="saveInlineTaskTitle(task)" aria-label="Título de tarea" />
+                } @else {
+                  <p (dblclick)="beginInlineTaskTitle(task)" title="Doble clic para renombrar">{{ task.title }}</p>
+                }
+                <div class="task-meta">
+                  <button class="priority-control" type="button" [attr.aria-label]="'Cambiar prioridad de ' + task.title" title="Cambiar prioridad" (click)="changeTaskPriority(task)">
+                    <span class="priority" [class]="'priority ' + task.priority"></span>
+                    <span>{{ task.priority === "high" ? "Alta" : task.priority === "low" ? "Baja" : "Media" }}</span>
+                  </button>
+                  @if (task.isInherited) {
+                    <span class="inherited">Pendiente de antes</span>
+                  }
+                  @if (task.projectName; as projectName) {
+                    <span class="project"><i [style.background]="task.projectColor"></i>{{ projectName }}</span>
+                  }
+                  @if (task.estimatedMinutes !== null) {
+                    <span class="duration"><svg lucideClock3 size="14"></svg>{{ task.estimatedMinutes }} min</span>
+                  }
+                  @if (task.actualMinutes !== null || task.startedAt) {
+                    <span class="duration actual-duration" [class.running]="task.startedAt"><svg lucideClock3 size="14"></svg>{{ timeLabel(task) }}</span>
+                  }
+                </div>
+              </div>
+              <div class="row-actions">
+                @if (!compactView() && activePriorityFilter() === "all") {
+                  <button class="row-action reorder-action" type="button" [disabled]="!canMoveTask(task, -1)" [attr.aria-label]="'Subir ' + task.title" title="Subir tarea" (click)="moveTask(task, -1)">
+                    <svg lucideArrowUp size="15"></svg>
+                  </button>
+                  <button class="row-action reorder-action" type="button" [disabled]="!canMoveTask(task, 1)" [attr.aria-label]="'Bajar ' + task.title" title="Bajar tarea" (click)="moveTask(task, 1)">
+                    <svg lucideArrowDown size="15"></svg>
+                  </button>
+                }
+                <button class="row-action time-action" type="button" [class.running]="task.startedAt" [attr.aria-label]="(task.startedAt ? 'Detener' : 'Iniciar') + ' temporizador de ' + task.title" [title]="task.startedAt ? 'Detener temporizador' : 'Iniciar temporizador'" (click)="toggleTimeTracking(task)">
+                  @if (task.startedAt) {
+                    <svg lucideSquare size="14"></svg>
+                  } @else {
+                    <svg lucidePlay size="16"></svg>
+                  }
+                </button>
+                <button class="row-action" type="button" aria-label="Editar {{ task.title }}" title="Editar tarea" (click)="openEditor(task)">
+                  <svg lucidePencil size="16"></svg>
+                </button>
+                <button class="row-action delete-action" type="button" aria-label="Eliminar {{ task.title }}" title="Eliminar tarea" (click)="openTaskDeleteConfirmation(task.id)">
+                  <svg lucideTrash2 size="16"></svg>
+                </button>
+              </div>
+            </article>
+          }
+        </div>
+      }
+
+      @if (compactView()) {
+        <button class="show-more-tasks" type="button" (click)="toggleCompactView()"><svg lucideMaximize2 size="15"></svg>Ver más tareas</button>
+      }
+    </section>
+
+      @if (editingTask(); as task) {
+        <div class="modal-backdrop" (click)="closeEditor()">
+          <form class="task-editor" (click)="$event.stopPropagation()" (submit)="$event.preventDefault(); saveEdit()" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+          <div class="editor-heading">
+            <div>
+              <p class="eyebrow">Editar tarea</p>
+              <h3 id="editor-title">Ajusta el siguiente paso</h3>
+            </div>
+            <button class="editor-cancel" type="button" (click)="closeEditor()">Cancelar</button>
+          </div>
+          <label>
+            Título
+            <input [formControl]="editor.controls.title" aria-label="Título de tarea" />
+          </label>
+          <label>
+            Descripción
+            <textarea [formControl]="editor.controls.description" rows="3" aria-label="Descripción de tarea" placeholder="Contexto o notas útiles"></textarea>
+          </label>
+          <div class="editor-fields">
+            <label>
+              Prioridad
+              <select [formControl]="editor.controls.priority" aria-label="Prioridad">
+                <option value="high">Alta</option>
+                <option value="medium">Media</option>
+                <option value="low">Baja</option>
+              </select>
+            </label>
+            <label>
+              Estimación en minutos
+              <input [formControl]="editor.controls.estimatedMinutes" type="number" min="0" step="1" inputmode="numeric" aria-label="Estimación en minutos" />
+            </label>
+            <label>
+              Tiempo real en minutos
+              <input [formControl]="editor.controls.actualMinutes" type="number" min="0" step="1" inputmode="numeric" aria-label="Tiempo real en minutos" />
+            </label>
+            <label>
+              Fecha
+              <input [formControl]="editor.controls.plannedDate" type="date" aria-label="Fecha programada" />
+            </label>
+          </div>
+            <div class="project-field">
+              <label>
+                Proyecto
+                <select [formControl]="editor.controls.projectId" aria-label="Proyecto">
+                  <option [ngValue]="null">Sin proyecto</option>
+                  @for (project of projects(); track project.id) {
+                    <option [ngValue]="project.id">{{ project.name }}</option>
+                  }
+                </select>
+              </label>
+              <button class="new-project-link" type="button" (click)="creatingProject.set(!creatingProject())">
+                {{ creatingProject() ? "Cancelar proyecto nuevo" : "Crear proyecto" }}
+              </button>
+            </div>
+            @if (creatingProject()) {
+              <div class="new-project" aria-label="Nuevo proyecto">
+                <label>
+                  Nombre del proyecto
+                  <input [formControl]="newProject.controls.name" placeholder="Ej. Cliente Aurora" />
+                </label>
+                <div class="color-picker" role="group" aria-label="Color del proyecto">
+                  @for (color of projectColors; track color) {
+                    <button class="color-swatch" type="button" [class.selected]="newProject.controls.color.value === color" [style.background]="color" [attr.aria-label]="'Elegir color ' + color" [attr.aria-pressed]="newProject.controls.color.value === color" (click)="newProject.controls.color.setValue(color)"></button>
+                  }
+                </div>
+                <button class="create-project-button" type="button" [disabled]="!newProject.controls.name.value.trim()" (click)="createProjectForTask()">Crear y seleccionar</button>
+              </div>
+            }
+          <section class="evidence-section" aria-labelledby="evidence-title">
+            <div class="evidence-heading">
+              <div><p class="eyebrow">Evidencia</p><h4 id="evidence-title">Archivos visuales</h4></div>
+              <button type="button" (click)="attachEvidence(task)"><svg lucidePaperclip size="14"></svg>Adjuntar</button>
+            </div>
+            @if (taskEvidence().length === 0) {
+              <p class="evidence-empty">Sin imágenes adjuntas.</p>
+            } @else {
+              <div class="evidence-list">
+                @for (evidence of taskEvidence(); track evidence.id) {
+                  <div class="evidence-item">
+                    @if (evidenceUrl(evidence); as url) {
+                      <img [src]="url" [alt]="evidence.originalName" />
+                    }
+                    <span [title]="evidence.originalName">{{ evidence.originalName }}</span>
+                    <button type="button" [attr.aria-label]="'Eliminar ' + evidence.originalName" title="Eliminar evidencia" (click)="deleteEvidence(task, evidence)"><svg lucideTrash2 size="14"></svg></button>
+                  </div>
+                }
+              </div>
+            }
+          </section>
+          <div class="editor-footer">
+            <span>Se moverá a la fecha elegida</span>
+            <button type="submit" [disabled]="store.saving() || !editor.controls.title.value.trim()">Guardar cambios</button>
+          </div>
+          </form>
+        </div>
+      }
+
+      @if (!compactView() && completedOpen() && store.completedTasks().length > 0) {
+        <section class="completed" aria-labelledby="completed-title">
+          <h3 id="completed-title">Completadas · {{ store.completedTasks().length }}</h3>
+          @for (task of store.completedTasks(); track task.id) {
+            <div class="completed-row">
+              <svg lucideCheck size="16"></svg>
+              <span>{{ task.title }}</span>
+              <button type="button" (click)="openCompletedTaskDetail(task)">Ver detalles</button>
+              <button type="button" (click)="reopenTask(task.id)">Reabrir</button>
+            </div>
+          }
+        </section>
+      }
+
+      @if (completedTaskDetail(); as task) {
+        <div class="modal-backdrop" (click)="closeCompletedTaskDetail()">
+          <section class="task-editor completed-task-detail" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="completed-task-detail-title">
+            <div class="editor-heading">
+              <div>
+                <p class="eyebrow">Tarea completada</p>
+                <h3 id="completed-task-detail-title">{{ task.title }}</h3>
+              </div>
+              <button class="editor-cancel" type="button" (click)="closeCompletedTaskDetail()">Cerrar</button>
+            </div>
+            @if (task.description) {
+              <p class="task-detail-description">{{ task.description }}</p>
+            } @else {
+              <p class="evidence-empty">Sin descripción.</p>
+            }
+            <div class="task-detail-facts">
+              <span>Finalizada<strong>{{ completedAtLabel(task.completedAt) }}</strong></span>
+              <span>Tiempo real<strong>{{ task.actualMinutes === null ? "Sin tiempo registrado" : task.actualMinutes + " min" }}</strong></span>
+              <span>Prioridad<strong>{{ task.priority === "high" ? "Alta" : task.priority === "low" ? "Baja" : "Media" }}</strong></span>
+              <span>Proyecto<strong>{{ task.projectName ?? "Sin proyecto" }}</strong></span>
+            </div>
+            <section class="evidence-section" aria-labelledby="completed-evidence-title">
+              <div class="evidence-heading">
+                <div><p class="eyebrow">Evidencia</p><h4 id="completed-evidence-title">Archivos visuales</h4></div>
+              </div>
+              @if (completedTaskEvidence().length === 0) {
+                <p class="evidence-empty">Sin imágenes adjuntas.</p>
+              } @else {
+                <div class="evidence-list">
+                  @for (evidence of completedTaskEvidence(); track evidence.id) {
+                    <div class="evidence-item">
+                      @if (completedTaskEvidenceUrls()[evidence.id]; as url) {
+                        <img [src]="url" [alt]="evidence.originalName" />
+                      }
+                      <span [title]="evidence.originalName">{{ evidence.originalName }}</span>
+                    </div>
+                  }
+                </div>
+              }
+            </section>
+          </section>
+        </div>
+      }
+    </div>
+    </section>
+  </main>
+
+  @if (projectCreatorOpen()) {
+    <div class="modal-backdrop" (click)="projectCreatorOpen.set(false)">
+      <form class="project-creator" (click)="$event.stopPropagation()" (submit)="$event.preventDefault(); createProjectFromRail()" role="dialog" aria-modal="true" aria-labelledby="project-creator-title">
+        <div class="editor-heading">
+          <div>
+            <p class="eyebrow">Nuevo proyecto</p>
+            <h2 id="project-creator-title">Crea un espacio de trabajo</h2>
+          </div>
+          <button class="editor-cancel" type="button" (click)="projectCreatorOpen.set(false)">Cancelar</button>
+        </div>
+        <label>
+          Nombre del proyecto
+          <input [formControl]="newProject.controls.name" placeholder="Ej. Cliente Aurora" autofocus />
+        </label>
+        <div class="color-picker" role="group" aria-label="Color del proyecto">
+          @for (color of projectColors; track color) {
+            <button class="color-swatch" type="button" [class.selected]="newProject.controls.color.value === color" [style.background]="color" [attr.aria-label]="'Elegir color ' + color" [attr.aria-pressed]="newProject.controls.color.value === color" (click)="newProject.controls.color.setValue(color)"></button>
+          }
+        </div>
+        <div class="identity-section">
+          <p>Identidad</p>
+          <div class="identity-mode" role="group" aria-label="Tipo de identidad">
+            <button type="button" [class.selected]="projectIdentityMode() === 'icon'" [attr.aria-pressed]="projectIdentityMode() === 'icon'" (click)="projectIdentityMode.set('icon')">Icono</button>
+            <button type="button" [class.selected]="projectIdentityMode() === 'logo'" [attr.aria-pressed]="projectIdentityMode() === 'logo'" (click)="projectIdentityMode.set('logo')">Logo</button>
+          </div>
+          @if (projectIdentityMode() === "icon") {
+            <div class="icon-picker" role="group" aria-label="Icono del proyecto">
+              @for (icon of projectIcons; track icon) {
+                <button class="project-icon-option" type="button" [class.selected]="newProject.controls.iconName.value === icon" [style.--project-color]="newProject.controls.color.value" [attr.aria-label]="'Elegir icono ' + icon" [attr.aria-pressed]="newProject.controls.iconName.value === icon" (click)="newProject.controls.iconName.setValue(icon)">
+                  @switch (icon) {
+                    @case ("briefcase-business") { <svg lucideBriefcaseBusiness size="18"></svg> }
+                    @case ("code-2") { <svg lucideCode2 size="18"></svg> }
+                    @case ("palette") { <svg lucidePalette size="18"></svg> }
+                    @case ("rocket") { <svg lucideRocket size="18"></svg> }
+                    @default { <svg lucideFolderKanban size="18"></svg> }
+                  }
+                </button>
+              }
+            </div>
+          } @else {
+            <div class="logo-picker">
+              @if (selectedProjectLogoPreviewUrl(); as previewUrl) {
+                <img class="logo-preview" [src]="previewUrl" alt="Vista previa del logo" />
+              }
+              <div class="logo-picker-details">
+                <button type="button" (click)="selectProjectLogo()">{{ selectedProjectLogo() ? "Cambiar imagen" : "Elegir imagen" }}</button>
+                @if (selectedProjectLogo(); as logo) {
+                  <span>{{ logo.sourcePath.split("\\").pop() }}</span>
+                } @else {
+                  <span>PNG, JPG o WebP hasta 10 MB</span>
+                }
+              </div>
+            </div>
+          }
+        </div>
+        <button class="creator-submit" type="submit" [disabled]="!newProject.controls.name.value.trim()">Crear proyecto</button>
+      </form>
+    </div>
+  }
+
+  @if (editingProject(); as project) {
+    <div class="modal-backdrop" (click)="closeProjectEditor()">
+      <form class="project-creator" (click)="$event.stopPropagation()" (submit)="$event.preventDefault(); saveProjectEdit()" role="dialog" aria-modal="true" aria-labelledby="project-editor-title">
+        <div class="editor-heading">
+          <div>
+            <p class="eyebrow">Ajustes del proyecto</p>
+            <h2 id="project-editor-title">Editar {{ project.name }}</h2>
+          </div>
+          <button class="editor-cancel" type="button" (click)="closeProjectEditor()">Cancelar</button>
+        </div>
+        <label>
+          Nombre del proyecto
+          <input [formControl]="projectEditor.controls.name" aria-label="Nombre del proyecto" autofocus />
+        </label>
+        <div class="color-picker" role="group" aria-label="Color del proyecto">
+          @for (color of projectColors; track color) {
+            <button class="color-swatch" type="button" [class.selected]="projectEditor.controls.color.value === color" [style.background]="color" [attr.aria-label]="'Elegir color ' + color" [attr.aria-pressed]="projectEditor.controls.color.value === color" (click)="projectEditor.controls.color.setValue(color)"></button>
+          }
+        </div>
+        <div class="identity-section">
+          <p>Identidad</p>
+          <div class="identity-mode" role="group" aria-label="Tipo de identidad">
+            <button type="button" [class.selected]="projectEditorIdentityMode() === 'icon'" [attr.aria-pressed]="projectEditorIdentityMode() === 'icon'" (click)="projectEditorIdentityMode.set('icon')">Icono</button>
+            <button type="button" [class.selected]="projectEditorIdentityMode() === 'logo'" [attr.aria-pressed]="projectEditorIdentityMode() === 'logo'" (click)="projectEditorIdentityMode.set('logo')">Logo</button>
+          </div>
+          @if (projectEditorIdentityMode() === "icon") {
+            <div class="icon-picker" role="group" aria-label="Icono del proyecto">
+              @for (icon of projectIcons; track icon) {
+                <button class="project-icon-option" type="button" [class.selected]="projectEditor.controls.iconName.value === icon" [style.--project-color]="projectEditor.controls.color.value" [attr.aria-label]="'Elegir icono ' + icon" [attr.aria-pressed]="projectEditor.controls.iconName.value === icon" (click)="projectEditor.controls.iconName.setValue(icon)">
+                  @switch (icon) {
+                    @case ("briefcase-business") { <svg lucideBriefcaseBusiness size="18"></svg> }
+                    @case ("code-2") { <svg lucideCode2 size="18"></svg> }
+                    @case ("palette") { <svg lucidePalette size="18"></svg> }
+                    @case ("rocket") { <svg lucideRocket size="18"></svg> }
+                    @default { <svg lucideFolderKanban size="18"></svg> }
+                  }
+                </button>
+              }
+            </div>
+          } @else {
+            <div class="logo-picker">
+              @if (selectedEditedProjectLogoPreviewUrl() ?? projectLogoUrl(project); as previewUrl) {
+                <img class="logo-preview" [src]="previewUrl" alt="Vista previa del logo" />
+              }
+              <div class="logo-picker-details">
+                <button type="button" (click)="selectProjectLogoForEditor()">{{ selectedEditedProjectLogo() ? "Cambiar imagen" : project.logoRelativePath ? "Reemplazar imagen" : "Elegir imagen" }}</button>
+                @if (selectedEditedProjectLogo(); as logo) {
+                  <span>{{ logo.sourcePath.split("\\").pop() }}</span>
+                } @else if (project.logoRelativePath) {
+                  <span>Imagen actual</span>
+                } @else {
+                  <span>PNG, JPG o WebP hasta 10 MB</span>
+                }
+              </div>
+            </div>
+          }
+        </div>
+        <div class="project-editor-actions">
+          <button class="archive-project" type="button" (click)="openArchiveConfirmation(project)">Archivar proyecto</button>
+          <button class="creator-submit" type="submit" [disabled]="!projectEditor.controls.name.value.trim()">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+  }
+</section>

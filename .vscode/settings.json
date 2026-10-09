@@ -1,0 +1,12 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^npm\\.cmd ls --depth=0$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^& \"\\.\\\\node_modules\\\\\\.bin\\\\ng\\.cmd\" version$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

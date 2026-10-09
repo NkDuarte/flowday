@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Flowday",
+  "version": "0.1.0",
+  "identifier": "com.nicolasduarte.flowday",
+  "build": {
+    "beforeDevCommand": "npm run start",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist/flowday/browser"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Flowday",
+        "width": 1040,
+        "height": 760,
+        "minWidth": 280,
+        "minHeight": 250,
+        "center": true,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' asset:; connect-src ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPLOCALDATA/project-logos/**/*",
+          "$APPLOCALDATA/evidence/**/*"
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "sql": {
+      "preload": ["sqlite:flowday.db"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
